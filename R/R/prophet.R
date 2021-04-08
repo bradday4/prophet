@@ -20,8 +20,8 @@ globalVariables(c(
 #'  also have a column cap that specifies the capacity at each ds. If not
 #'  provided, then the model object will be instantiated but not fit; use
 #'  fit.prophet(m, df) to fit the model.
-#' @param growth String 'linear' or 'logistic' to specify a linear or logistic
-#'  trend.
+#' @param growth String 'linear', 'logistic', or 'flat' to specify a linear, logistic
+#'  or flat trend.
 #' @param changepoints Vector of dates at which to include potential
 #'  changepoints. If not specified, potential changepoints are selected
 #'  automatically.
@@ -79,7 +79,9 @@ globalVariables(c(
 #' @export
 #' @importFrom dplyr "%>%"
 #' @import Rcpp
+#' @rawNamespace import(RcppParallel, except = LdFlags)
 #' @import rlang
+#' @useDynLib prophet, .registration = TRUE
 prophet <- function(df = NULL,
                     growth = 'linear',
                     changepoints = NULL,
@@ -134,7 +136,8 @@ prophet <- function(df = NULL,
     history.dates = NULL,
     train.holiday.names = NULL,
     train.component.cols = NULL,
-    component.modes = NULL
+    component.modes = NULL,
+    fit.kwargs = list()
   )
   m <- validate_inputs(m)
   class(m) <- append("prophet", class(m))
@@ -152,8 +155,8 @@ prophet <- function(df = NULL,
 #'
 #' @keywords internal
 validate_inputs <- function(m) {
-  if (!(m$growth %in% c('linear', 'logistic'))) {
-    stop("Parameter 'growth' should be 'linear' or 'logistic'.")
+  if (!(m$growth %in% c('linear', 'logistic', 'flat'))) {
+    stop("Parameter 'growth' should be 'linear', 'logistic', or 'flat'.")
   }
   if ((m$changepoint.range < 0) | (m$changepoint.range > 1)) {
     stop("Parameter 'changepoint.range' must be in [0, 1]")
@@ -166,6 +169,9 @@ validate_inputs <- function(m) {
       stop('Holidays dataframe must have ds field.')
     }
     m$holidays$ds <- as.Date(m$holidays$ds)
+    if (any(is.na(m$holidays$ds)) | any(is.na(m$holidays$holiday))) {
+      stop('Found NA in the holidays dataframe.')
+    }
     has.lower <- exists('lower_window', where = m$holidays)
     has.upper <- exists('upper_window', where = m$holidays)
     if (has.lower + has.upper == 1) {
@@ -235,65 +241,17 @@ validate_column_name <- function(
   }
 }
 
-
-#' Load compiled Stan model
-#'
-#' @param model String 'linear' or 'logistic' to specify a linear or logistic
-#'  trend.
-#'
-#' @return Stan model.
-#'
-#' @keywords internal
-get_prophet_stan_model <- function() {
-  ## If the cached model doesn't work, just compile a new one.
-  tryCatch({
-    binary <- system.file(
-      'libs',
-      Sys.getenv('R_ARCH'),
-      'prophet_stan_model.RData',
-      package = 'prophet',
-      mustWork = TRUE
-    )
-    load(binary)
-    obj.name <- 'model.stanm'
-    stanm <- eval(parse(text = obj.name))
-
-    ## Should cause an error if the model doesn't work.
-    stanm@mk_cppmodule(stanm)
-    stanm
-  }, error = function(cond) {
-    compile_stan_model()
-  })
-}
-
-#' Compile Stan model
-#'
-#' @param model String 'linear' or 'logistic' to specify a linear or logistic
-#'  trend.
-#'
-#' @return Stan model.
-#'
-#' @keywords internal
-compile_stan_model <- function() {
-  fn <- 'stan/prophet.stan'
-
-  stan.src <- system.file(fn, package = 'prophet', mustWork = TRUE)
-  stanc <- rstan::stanc(stan.src)
-
-  return(rstan::stan_model(stanc_ret = stanc, model_name = 'prophet_model'))
-}
-
 #' Convert date vector
 #'
-#' Convert the date to POSIXct object
+#' Convert the date to POSIXct object. Timezones are stripped and replaced
+#' with GMT.
 #'
-#' @param ds Date vector, can be consisted of characters
-#' @param tz string time zone
+#' @param ds Date vector
 #'
 #' @return vector of POSIXct object converted from date
 #'
 #' @keywords internal
-set_date <- function(ds = NULL, tz = "GMT") {
+set_date <- function(ds) {
   if (length(ds) == 0) {
     return(NULL)
   }
@@ -302,12 +260,20 @@ set_date <- function(ds = NULL, tz = "GMT") {
     ds <- as.character(ds)
   }
 
-  if (min(nchar(ds), na.rm=TRUE) < 12) {
-    ds <- as.POSIXct(ds, format = "%Y-%m-%d", tz = tz)
-  } else {
-    ds <- as.POSIXct(ds, format = "%Y-%m-%d %H:%M:%S", tz = tz)
+  # If a datetime, strip timezone and replace with GMT.
+  if (lubridate::is.instant(ds)) {
+    ds <- as.POSIXct(lubridate::force_tz(ds, "GMT"), tz = "GMT")
   }
-  attr(ds, "tzone") <- tz
+  else {
+    # Assume it can be coerced into POSIXct
+    if (min(nchar(ds), na.rm=TRUE) < 12) {
+        ds <- as.POSIXct(ds, format = "%Y-%m-%d", tz = "GMT")
+    } else {
+        ds <- as.POSIXct(ds, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+    }
+  }
+
+  attr(ds, "tzone") <- "GMT"
   return(ds)
 }
 
@@ -343,9 +309,9 @@ time_diff <- function(ds1, ds2, units = "days") {
 setup_dataframe <- function(m, df, initialize_scales = FALSE) {
   if (exists('y', where=df)) {
     df$y <- as.numeric(df$y)
-  }
-  if (any(is.infinite(df$y))) {
-    stop("Found infinity in column y.")
+    if (any(is.infinite(df$y))) {
+      stop("Found infinity in column y.")
+    }
   }
   df$ds <- set_date(df$ds)
   if (anyNA(df$ds)) {
@@ -374,7 +340,7 @@ setup_dataframe <- function(m, df, initialize_scales = FALSE) {
       df[[condition.name]] <- as.logical(df[[condition.name]])
     }
   }
-  
+
   df <- df %>%
     dplyr::arrange(ds)
 
@@ -610,7 +576,7 @@ make_holiday_features <- function(m, dates, holidays) {
       }
       names <- paste(.$holiday, '_delim_', ifelse(offsets < 0, '-', '+'),
                      abs(offsets), sep = '')
-      dplyr::data_frame(ds = .$ds + offsets * 24 * 3600, holiday = names)
+      dplyr::tibble(ds = .$ds + offsets * 24 * 3600, holiday = names)
     }) %>%
     dplyr::mutate(x = 1.) %>%
     tidyr::spread(holiday, x, fill = 0)
@@ -733,7 +699,7 @@ add_regressor <- function(
 #' specified, m$seasonality.mode will be used (defaults to 'additive').
 #' Additive means the seasonality will be added to the trend, multiplicative
 #' means it will multiply the trend.
-#' 
+#'
 #' If condition.name is provided, the dataframe passed to `fit` and `predict`
 #' should have a column with the specified condition.name containing booleans
 #' which decides when to apply seasonality.
@@ -750,7 +716,7 @@ add_regressor <- function(
 #'
 #' @export
 add_seasonality <- function(
-  m, name, period, fourier.order, prior.scale = NULL, mode = NULL, 
+  m, name, period, fourier.order, prior.scale = NULL, mode = NULL,
   condition.name = NULL
 ) {
   if (!is.null(m$history)) {
@@ -924,7 +890,7 @@ make_all_seasonality_features <- function(m, df) {
 #'
 #' @keywords internal
 regressor_column_matrix <- function(m, seasonal.features, modes) {
-  components <- dplyr::data_frame(component = colnames(seasonal.features)) %>%
+  components <- dplyr::tibble(component = colnames(seasonal.features)) %>%
     dplyr::mutate(col = seq_len(dplyr::n())) %>%
     tidyr::separate(component, c('component', 'part'), sep = "_delim_",
                     extra = "merge", fill = "right") %>%
@@ -1099,7 +1065,28 @@ set_auto_seasonalities <- function(m) {
   return(m)
 }
 
-#' Initialize linear growth.
+#' Initialize flat growth.
+#'
+#' Provides a strong initialization for flat growth by setting the
+#' growth to 0 and calculates the offset parameter that pass the 
+#' function through the mean of the the y_scaled values.
+#'
+#' @param df Data frame with columns ds (date), y_scaled (scaled time series),
+#'  and t (scaled time).
+#'
+#' @return A vector (k, m) with the rate (k) and offset (m) of the flat
+#'  growth function.
+#'
+#' @keywords internal
+flat_growth_init <- function(df) {
+  # Initialize the rate
+  k <- 0
+  # And the offset
+  m <- mean(df$y_scaled)
+  return(c(k, m))
+}
+
+#' Initialize constant growth.
 #'
 #' Provides a strong initialization for linear growth by calculating the
 #' growth and offset parameters that pass the function through the first and
@@ -1194,7 +1181,7 @@ fit.prophet <- function(m, df, ...) {
   if (nrow(history) < 2) {
     stop("Dataframe has less than 2 non-NA rows.")
   }
-  m$history.dates <- sort(set_date(df$ds))
+  m$history.dates <- sort(set_date(unique(df$ds)))
 
   out <- setup_dataframe(m, history, initialize_scales = TRUE)
   history <- out$df
@@ -1208,6 +1195,7 @@ fit.prophet <- function(m, df, ...) {
   component.cols <- out2$component.cols
   m$train.component.cols <- component.cols
   m$component.modes <- out2$modes
+  m$fit.kwargs <- list(...)
 
   m <- set_changepoints(m)
 
@@ -1222,7 +1210,7 @@ fit.prophet <- function(m, df, ...) {
     X = as.matrix(seasonal.features),
     sigmas = array(prior.scales),
     tau = m$changepoint.prior.scale,
-    trend_indicator = as.numeric(m$growth == 'logistic'),
+    trend_indicator = switch(m$growth, 'linear'=0, 'logistic'=1, 'flat'=2),
     s_a = array(component.cols$additive_terms),
     s_m = array(component.cols$multiplicative_terms)
   )
@@ -1231,15 +1219,18 @@ fit.prophet <- function(m, df, ...) {
   if (m$growth == 'linear') {
     dat$cap <- rep(0, nrow(history))  # Unused inside Stan
     kinit <- linear_growth_init(history)
-  } else {
+  } else if (m$growth == 'flat') {
+    dat$cap <- rep(0, nrow(history)) # Unused inside Stan
+    kinit <- flat_growth_init(history)
+  } else if (m$growth == 'logistic') {
     dat$cap <- history$cap_scaled  # Add capacities to the Stan data
     kinit <- logistic_growth_init(history)
   }
 
-  if (exists(".prophet.stan.model")) {
-    model <- .prophet.stan.model
+  if (exists(".prophet.stan.model", where = prophet_model_env)) {
+    model <- get('.prophet.stan.model', envir = prophet_model_env)
   } else {
-    model <- get_prophet_stan_model()
+    model <- stanmodels$prophet
   }
 
   stan_init <- function() {
@@ -1251,7 +1242,8 @@ fit.prophet <- function(m, df, ...) {
     )
   }
 
-  if (min(history$y) == max(history$y)) {
+  if (min(history$y) == max(history$y) & 
+        (m$growth %in% c('linear', 'flat'))) {
     # Nothing to fit.
     m$params <- stan_init()
     m$params$sigma_obs <- 0.
@@ -1288,7 +1280,7 @@ fit.prophet <- function(m, df, ...) {
     m$params <- m$stan.fit$par
     n.iteration <- 1
   }
-  
+
   # Cast the parameters to have consistent form, whether full bayes or MAP
   for (name in c('delta', 'beta')){
     m$params[[name]] <- matrix(m$params[[name]], nrow = n.iteration)
@@ -1348,7 +1340,7 @@ predict.prophet <- function(object, df = NULL, ...) {
   } else {
     intervals <- NULL
     }
- 
+
   # Drop columns except ds, cap, floor, and trend
   cols <- c('ds', 'trend')
   if ('cap' %in% colnames(df)) {
@@ -1361,6 +1353,19 @@ predict.prophet <- function(object, df = NULL, ...) {
   df <- dplyr::bind_cols(df, seasonal.components, intervals)
   df$yhat <- df$trend * (1 + df$multiplicative_terms) + df$additive_terms
   return(df)
+}
+
+#' Evaluate the flat trend function.
+#'
+#' @param t Vector of times on which the function is evaluated.
+#' @param m Float initial offset.
+#'
+#' @return Vector y(t).
+#'
+#' @keywords internal
+flat_trend <- function(t, m) {
+  y <- rep(m, length(t))
+  return(y)
 }
 
 #' Evaluate the piecewise linear function.
@@ -1437,7 +1442,9 @@ predict_trend <- function(model, df) {
   t <- df$t
   if (model$growth == 'linear') {
     trend <- piecewise_linear(t, deltas, k, param.m, model$changepoints.t)
-  } else {
+  } else if (model$growth == 'flat') {
+     trend <- flat_trend(t, param.m)
+  } else if (model$growth == 'logistic') {
     cap <- df$cap_scaled
     trend <- piecewise_logistic(
       t, cap, deltas, k, param.m, model$changepoints.t)
@@ -1565,7 +1572,7 @@ predict_uncertainty <- function(m, df) {
   colnames(intervals) <- paste(rep(c('yhat', 'trend'), each=2),
                                c('lower', 'upper'), sep = "_")
 
-  return(dplyr::as_data_frame(intervals))
+  return(dplyr::as_tibble(intervals))
 }
 
 #' Simulate observations from the extrapolated generative model.
@@ -1637,7 +1644,9 @@ sample_predictive_trend <- function(model, df, iteration) {
   # Get the corresponding trend
   if (model$growth == 'linear') {
     trend <- piecewise_linear(t, deltas, k, param.m, changepoint.ts)
-  } else {
+  } else if (model$growth == 'flat') {
+    trend <- flat_trend(t, param.m)
+  } else if (model$growth == 'logistic') {
     cap <- df$cap_scaled
     trend <- piecewise_logistic(t, cap, deltas, k, param.m, changepoint.ts)
   }

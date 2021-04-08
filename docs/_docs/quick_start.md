@@ -32,7 +32,7 @@ First we'll import the data:
 ```python
 # Python
 import pandas as pd
-from fbprophet import Prophet
+from prophet import Prophet
 ```
 ```python
 # Python
@@ -202,37 +202,37 @@ forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail()
     <tr>
       <th>3265</th>
       <td>2017-01-15</td>
-      <td>8.212942</td>
-      <td>7.463560</td>
-      <td>8.937215</td>
+      <td>8.211542</td>
+      <td>7.444742</td>
+      <td>8.903545</td>
     </tr>
     <tr>
       <th>3266</th>
       <td>2017-01-16</td>
-      <td>8.537993</td>
-      <td>7.790259</td>
-      <td>9.267492</td>
+      <td>8.536553</td>
+      <td>7.847804</td>
+      <td>9.211145</td>
     </tr>
     <tr>
       <th>3267</th>
       <td>2017-01-17</td>
-      <td>8.325428</td>
-      <td>7.525675</td>
-      <td>9.059391</td>
+      <td>8.323968</td>
+      <td>7.541829</td>
+      <td>9.035461</td>
     </tr>
     <tr>
       <th>3268</th>
       <td>2017-01-18</td>
-      <td>8.158059</td>
-      <td>7.433634</td>
-      <td>8.883627</td>
+      <td>8.156621</td>
+      <td>7.404457</td>
+      <td>8.830642</td>
     </tr>
     <tr>
       <th>3269</th>
       <td>2017-01-19</td>
-      <td>8.170046</td>
-      <td>7.431801</td>
-      <td>8.840703</td>
+      <td>8.168561</td>
+      <td>7.438865</td>
+      <td>8.908668</td>
     </tr>
   </tbody>
 </table>
@@ -262,17 +262,18 @@ fig2 = m.plot_components(forecast)
 ![png](/prophet/static/quick_start_files/quick_start_14_0.png) 
 
 
-An interactive figure of the forecast can be created with plotly. You will need to install plotly separately, as it will not by default be installed with fbprophet.
+An interactive figure of the forecast and components can be created with plotly. You will need to install plotly 4.0 or above separately, as it will not by default be installed with prophet. You will also need to install the `notebook` and `ipywidgets` packages.
 
 
 ```python
 # Python
-from fbprophet.plot import plot_plotly
-import plotly.offline as py
-py.init_notebook_mode()
+from prophet.plot import plot_plotly, plot_components_plotly
 
-fig = plot_plotly(m, forecast)  # This returns a plotly Figure
-py.iplot(fig)
+plot_plotly(m, forecast)
+```
+```python
+# Python
+plot_components_plotly(m, forecast)
 ```
 More details about the options available for each method are available in the docstrings, for example, via `help(Prophet)` or `help(Prophet.fit)`. The [R reference manual](https://cran.r-project.org/web/packages/prophet/prophet.pdf) on CRAN provides a concise list of all of the available functions, each of which has a Python equivalent.
 
@@ -290,6 +291,12 @@ In R, we use the normal model fitting API.  We provide a `prophet` function that
 # R
 library(prophet)
 ```
+    R[write to console]: Loading required package: Rcpp
+    
+    R[write to console]: Loading required package: rlang
+    
+
+
 First we read in the data and create the outcome variable. As in the Python API, this is a dataframe with columns `ds` and `y`, containing the date and numeric value respectively. The ds column should be YYYY-MM-DD for a date, or YYYY-MM-DD HH:MM:SS for a timestamp. As above, we use here the log number of views to Peyton Manning's Wikipedia page, available [here](https://github.com/facebook/prophet/blob/master/examples/example_wp_log_peyton_manning.csv).
 
 
@@ -312,7 +319,6 @@ Predictions are made on a dataframe with a column `ds` containing the dates for 
 future <- make_future_dataframe(m, periods = 365)
 tail(future)
 ```
-
                  ds
     3265 2017-01-14
     3266 2017-01-15
@@ -320,7 +326,6 @@ tail(future)
     3268 2017-01-17
     3269 2017-01-18
     3270 2017-01-19
-
 
 
 As with most modeling procedures in R, we use the generic `predict` function to get our forecast. The `forecast` object is a dataframe with a column `yhat` containing the forecast. It has additional columns for uncertainty intervals and seasonal components.
@@ -331,15 +336,13 @@ As with most modeling procedures in R, we use the generic `predict` function to 
 forecast <- predict(m, future)
 tail(forecast[c('ds', 'yhat', 'yhat_lower', 'yhat_upper')])
 ```
-
                  ds     yhat yhat_lower yhat_upper
-    3265 2017-01-14 7.824163   7.127881   8.609668
-    3266 2017-01-15 8.205942   7.452071   8.904387
-    3267 2017-01-16 8.530942   7.742400   9.300974
-    3268 2017-01-17 8.318327   7.606534   9.071184
-    3269 2017-01-18 8.150948   7.440224   8.902922
-    3270 2017-01-19 8.162839   7.385953   8.890669
-
+    3265 2017-01-14 7.818359   7.071228   8.550957
+    3266 2017-01-15 8.200125   7.475725   8.869495
+    3267 2017-01-16 8.525104   7.747071   9.226915
+    3268 2017-01-17 8.312482   7.551904   9.046774
+    3269 2017-01-18 8.145098   7.390770   8.863692
+    3270 2017-01-19 8.156964   7.381716   8.866507
 
 
 You can use the generic `plot` function to plot the forecast, by passing in the model and the forecast dataframe.
@@ -350,7 +353,7 @@ You can use the generic `plot` function to plot the forecast, by passing in the 
 plot(m, forecast)
 ```
  
-![png](/prophet/static/quick_start_files/quick_start_29_0.png) 
+![png](/prophet/static/quick_start_files/quick_start_30_0.png) 
 
 
 You can use the `prophet_plot_components` function to see the forecast broken down into trend, weekly seasonality, and yearly seasonality.
@@ -361,7 +364,7 @@ You can use the `prophet_plot_components` function to see the forecast broken do
 prophet_plot_components(m, forecast)
 ```
  
-![png](/prophet/static/quick_start_files/quick_start_31_0.png) 
+![png](/prophet/static/quick_start_files/quick_start_32_0.png) 
 
 
 An interactive plot of the forecast using Dygraphs can be made with the command `dyplot.prophet(m, forecast)`.

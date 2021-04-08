@@ -10,17 +10,15 @@ subsections:
     title: Using Python
 ---
 
-Prophet has two implementations: [R](#installation-in-r) and [Python](#installation-in-python). Note the slight name difference for the Python package.
+Prophet has two implementations: [R](#installation-in-r) and [Python](#installation-in-python).
 
 <a href="#r"></a>
 
-## Installation in R
-
-Prophet is a [CRAN package](https://cran.r-project.org/package=prophet) and you can use `install.packages`. For OSX, be sure to choose a source install:
+Prophet is a [CRAN package](https://cran.r-project.org/package=prophet) so you can use `install.packages`.
 
 ```
 # R
-> install.packages('prophet', type="source")
+> install.packages('prophet')
 ```
 
 After installation, you can [get started!](quick_start.html#r-api)
@@ -39,10 +37,13 @@ Prophet is on PyPI, so you can use pip to install it:
 
 ```
 # bash
-$ pip install fbprophet
+# Install pystan with pip before using pip to install prophet
+$ pip install pystan==2.19.1.1
+$
+$ pip install prophet
 ```
 
-The major dependency that Prophet has is `pystan`. PyStan has its own [installation instructions](http://pystan.readthedocs.io/en/latest/installation_beginner.html). Install pystan with pip before using pip to install fbprophet.
+The major dependency that Prophet has is `pystan`. PyStan has its own [installation instructions](https://pystan.readthedocs.io/en/latest/installation.html). Install pystan with pip before using pip to install prophet.
 
 After installation, you can [get started!](quick_start.html#python-api)
 
@@ -52,8 +53,8 @@ On Windows, PyStan requires a compiler so you'll need to [follow the instruction
 
 ### Linux
 
-Make sure compilers (gcc, g++, build-essential) and Python development tools (python-dev, python3-dev) are installed. In Red Hat systems, install the packages gcc64 and gcc64-c++. If you are using a VM, be aware that you will need at least 4GB of memory to install fbprophet, and at least 2GB of memory to use fbprophet.
+Make sure compilers (gcc, g++, build-essential) and Python development tools (python-dev, python3-dev) are installed. In Red Hat systems, install the packages gcc64 and gcc64-c++. If you are using a VM, be aware that you will need at least 4GB of memory to install prophet, and at least 2GB of memory to use prophet.
 
 ### Anaconda
 
-Use `conda install gcc` to set up gcc. The easiest way to install Prophet is through conda-forge: `conda install -c conda-forge fbprophet`.
+Use `conda install gcc` to set up gcc. The easiest way to install Prophet is through conda-forge: `conda install -c conda-forge prophet`.

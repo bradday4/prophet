@@ -6,12 +6,12 @@
 library(prophet)
 context("Prophet tests")
 
-DATA <- read.csv('data.csv')
+DATA <- read.csv(test_path('data.csv'))
 N <- nrow(DATA)
 train <- DATA[1:floor(N / 2), ]
 future <- DATA[(ceiling(N/2) + 1):N, ]
 
-DATA2 <- read.csv('data2.csv')
+DATA2 <- read.csv(test_path('data2.csv'))
 
 DATA$ds <- prophet:::set_date(DATA$ds)
 DATA2$ds <- prophet:::set_date(DATA2$ds)
@@ -33,8 +33,13 @@ test_that("fit_predict_no_changepoints", {
   expect_warning({
     # warning from prophet(), error from predict()
     m <- prophet(train, n.changepoints = 0)
-    expect_error(predict(m, future), NA)
   })
+  fcst <- predict(m, future)
+
+  expect_warning({
+    m <- prophet(train, n.changepoints = 0, mcmc.samples = 100)
+  })
+  fcst <- predict(m, future)
 })
 
 test_that("fit_predict_changepoint_not_in_history", {
@@ -71,6 +76,16 @@ test_that("fit_predict_constant_history", {
   m <- prophet(train2)
   fcst <- predict(m, future)
   expect_equal(tail(fcst$yhat, 1), 0)
+})
+
+test_that("fit_predict_uncertainty_disabled", {
+  skip_if_not(Sys.getenv('R_ARCH') != '/i386')
+  for (uncertainty in c(0, FALSE)) {
+    m <- prophet(train, uncertainty.samples = uncertainty)
+    fcst <- predict(m, future)
+    expected.cols <- c('ds', 'trend', 'additive_terms', 'weekly', 'multiplicative_terms', 'yhat')
+    expect_equal(expected.cols, colnames(fcst))
+  }
 })
 
 test_that("setup_dataframe", {
@@ -114,6 +129,7 @@ test_that("logistic_floor", {
   expect_true(m$logistic.floor)
   expect_true('floor' %in% colnames(m$history))
   expect_equal(m$history$y_scaled[1], 1., tolerance = 1e-6)
+  expect_equal(m$fit.kwargs, list(algorithm = 'Newton'))
   fcst1 <- predict(m, future1)
 
   m2 <- prophet(growth = 'logistic')
@@ -125,10 +141,6 @@ test_that("logistic_floor", {
   future1$floor <- future1$floor + 10.
   m2 <- fit.prophet(m2, history2, algorithm = 'Newton')
   expect_equal(m2$history$y_scaled[1], 1., tolerance = 1e-6)
-  fcst2 <- predict(m, future1)
-  fcst2$yhat <- fcst2$yhat - 10.
-  # Check for approximate shift invariance
-  expect_true(all(abs(fcst1$yhat - fcst2$yhat) < 1))
 })
 
 test_that("get_changepoints", {
@@ -225,9 +237,13 @@ test_that("growth_init", {
   expect_equal(params[2], 0.5307511, tolerance = 1e-6)
 
   params <- prophet:::logistic_growth_init(history)
-  
   expect_equal(params[1], 1.507925, tolerance = 1e-6)
   expect_equal(params[2], -0.08167497, tolerance = 1e-6)
+
+  params <- prophet:::flat_growth_init(history)
+  expect_equal(params[1], 0, tolerance = 1e-6)
+  expect_equal(params[2], 0.49335657, tolerance = 1e-6)
+
 })
 
 test_that("piecewise_linear", {
@@ -264,6 +280,19 @@ test_that("piecewise_logistic", {
   y.true <- y.true[8:length(y.true)]
   cap <- cap[8:length(cap)]
   y <- prophet:::piecewise_logistic(t, cap, deltas, k, m, changepoint.ts)
+  expect_equal(y, y.true, tolerance = 1e-6)
+})
+
+test_that("flat_trend", {
+  t <- seq(0, 10)
+  m <- 0.5
+  y = prophet:::flat_trend(t, m)
+  y.true <- rep(0.5, length(t))
+  expect_equal(y, y.true, tolerance = 1e-6)
+
+  t <- t[8:length(t)]
+  y = prophet:::flat_trend(t, m)
+  y.true <- y.true[8:length(y.true)]
   expect_equal(y, y.true, tolerance = 1e-6)
 })
 
@@ -607,6 +636,7 @@ test_that("conditional_custom_seasonality", {
   out <- prophet:::make_all_seasonality_features(m, df)
   #Confirm that only values without is_conditional_week has non zero entries
   nonzero.weekly = out$seasonal.features %>%
+    dplyr::as_tibble() %>%
     dplyr::select(dplyr::starts_with('conditional_weekly')) %>%
     dplyr::mutate_all(~ . != 0) %>%
     dplyr::mutate(nonzero = rowSums(. != 0) > 0) %>% 

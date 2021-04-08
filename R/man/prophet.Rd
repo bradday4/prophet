@@ -4,14 +4,26 @@
 \alias{prophet}
 \title{Prophet forecaster.}
 \usage{
-prophet(df = NULL, growth = "linear", changepoints = NULL,
-  n.changepoints = 25, changepoint.range = 0.8,
-  yearly.seasonality = "auto", weekly.seasonality = "auto",
-  daily.seasonality = "auto", holidays = NULL,
-  seasonality.mode = "additive", seasonality.prior.scale = 10,
-  holidays.prior.scale = 10, changepoint.prior.scale = 0.05,
-  mcmc.samples = 0, interval.width = 0.8, uncertainty.samples = 1000,
-  fit = TRUE, ...)
+prophet(
+  df = NULL,
+  growth = "linear",
+  changepoints = NULL,
+  n.changepoints = 25,
+  changepoint.range = 0.8,
+  yearly.seasonality = "auto",
+  weekly.seasonality = "auto",
+  daily.seasonality = "auto",
+  holidays = NULL,
+  seasonality.mode = "additive",
+  seasonality.prior.scale = 10,
+  holidays.prior.scale = 10,
+  changepoint.prior.scale = 0.05,
+  mcmc.samples = 0,
+  interval.width = 0.8,
+  uncertainty.samples = 1000,
+  fit = TRUE,
+  ...
+)
 }
 \arguments{
 \item{df}{(optional) Dataframe containing the history. Must have columns ds
@@ -20,8 +32,8 @@ also have a column cap that specifies the capacity at each ds. If not
 provided, then the model object will be instantiated but not fit; use
 fit.prophet(m, df) to fit the model.}
 
-\item{growth}{String 'linear' or 'logistic' to specify a linear or logistic
-trend.}
+\item{growth}{String 'linear', 'logistic', or 'flat' to specify a linear, logistic
+or flat trend.}
 
 \item{changepoints}{Vector of dates at which to include potential
 changepoints. If not specified, potential changepoints are selected
@@ -76,7 +88,8 @@ If mcmc.samples>0, this will be integrated over all model parameters,
 which will include uncertainty in seasonality.}
 
 \item{uncertainty.samples}{Number of simulated draws used to estimate
-uncertainty intervals.}
+uncertainty intervals. Settings this value to 0 or False will disable
+uncertainty estimation and speed up the calculation.}
 
 \item{fit}{Boolean, if FALSE the model is initialized but not fit.}
 

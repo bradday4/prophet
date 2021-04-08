@@ -21,8 +21,11 @@ You may have noticed in the earlier examples in this documentation that real tim
 Prophet detects changepoints by first specifying a large number of *potential changepoints* at which the rate is allowed to change. It then puts a sparse prior on the magnitudes of the rate changes (equivalent to L1 regularization) - this essentially means that Prophet has a large number of *possible* places where the rate can change, but will use as few of them as possible. Consider the Peyton Manning forecast from the Quickstart. By default, Prophet specifies 25 potential changepoints which are uniformly placed in the first 80% of the time series. The vertical lines in this figure indicate where the potential changepoints were placed:
 
 
+    INFO:numexpr.utils:NumExpr defaulting to 8 threads.
+
+
  
-![png](/prophet/static/trend_changepoints_files/trend_changepoints_4_0.png) 
+![png](/prophet/static/trend_changepoints_files/trend_changepoints_4_1.png) 
 
 
 Even though we have a lot of places where the rate can possibly change, because of the sparse prior, most of these changepoints go unused. We can see this by plotting the magnitude of the rate change at each changepoint:
@@ -41,7 +44,7 @@ plot(m, forecast) + add_changepoints_to_plot(m)
 ```
 ```python
 # Python
-from fbprophet.plot import add_changepoints_to_plot
+from prophet.plot import add_changepoints_to_plot
 fig = m.plot(forecast)
 a = add_changepoints_to_plot(fig.gca(), m, forecast)
 ```
@@ -49,7 +52,7 @@ a = add_changepoints_to_plot(fig.gca(), m, forecast)
 ![png](/prophet/static/trend_changepoints_files/trend_changepoints_9_0.png) 
 
 
-By default changepoints are only inferred for the first 80% of the time series in order to have plenty of runway for projecting the trend forward and to avoid overfitting fluctuations at the end of the time series. This default works in many situations but not all, and can be change using the `changepoint_range` argument. For example, `m = Prophet(changepoint_range=0.9)` in Python or `m <- prophet(changepoint.range = 0.9)` in R will place potential changepoints in the first 90% of the time series.
+By default changepoints are only inferred for the first 80% of the time series in order to have plenty of runway for projecting the trend forward and to avoid overfitting fluctuations at the end of the time series. This default works in many situations but not all, and can be changed using the `changepoint_range` argument. For example, `m = Prophet(changepoint_range=0.9)` in Python or `m <- prophet(changepoint.range = 0.9)` in R will place potential changepoints in the first 90% of the time series.
 
 
 <a id="adjusting-trend-flexibility"> </a>
@@ -94,6 +97,9 @@ fig = m.plot(forecast)
 ![png](/prophet/static/trend_changepoints_files/trend_changepoints_16_0.png) 
 
 
+When visualizing the forecast, this parameter can be adjusted as needed if the trend seems to be over- or under-fit. In the fully-automated setting, see the documentation on cross validation for recommendations on how this parameter can be tuned.
+
+
 <a id="specifying-the-locations-of-the-changepoints"> </a>
 
 ### Specifying the locations of the changepoints
@@ -115,5 +121,5 @@ forecast = m.fit(df).predict(future)
 fig = m.plot(forecast)
 ```
  
-![png](/prophet/static/trend_changepoints_files/trend_changepoints_20_0.png) 
+![png](/prophet/static/trend_changepoints_files/trend_changepoints_21_0.png) 
 
